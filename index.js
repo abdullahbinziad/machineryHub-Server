@@ -14,6 +14,7 @@ const cors = require("cors");
 app.use(cors(corsConfig));
 app.use(express.json());
 
+// const uri = `mongodb://127.0.0.1:27017/npinternational`;
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.dgljxbc.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -30,11 +31,20 @@ async function run() {
     const database = client.db("npinternational");
     const productCollecction = database.collection("products");
     const categoryCollection = database.collection("category");
+    const activityCollection = database.collection("activity");
 
     //get all propducts
 
     app.get("/products", async (req, res) => {
-      const result = await productCollecction.find({}).toArray();
+      const result = await productCollecction.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/hot-products", async (req, res) => {
+      const result = await productCollecction
+        .find({}, { projection: { title: 1, image: 1, subCategoryName: 1 } })
+        .limit(6)
+        .toArray();
       res.send(result);
     });
 
@@ -144,6 +154,14 @@ async function run() {
         }
       }
     );
+
+    //Add new activity
+    app.post("/add-activity", async (req, res) => {
+      const { title, shortDescription, activityCover, post } = req.body;
+      const data = { title, shortDescription, activityCover, post };
+      const result = await activityCollection.insertOne(data);
+      res.send(result);
+    });
 
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
