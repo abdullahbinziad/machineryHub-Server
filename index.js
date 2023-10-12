@@ -3,7 +3,7 @@ const express = require("express");
 const app = express();
 const port = 3000;
 require("dotenv").config();
-
+const jwt = require("jsonwebtoken");
 const corsConfig = {
   origin: "*",
   credentials: true,
@@ -14,8 +14,8 @@ const cors = require("cors");
 app.use(cors(corsConfig));
 app.use(express.json());
 
-// const uri = `mongodb://127.0.0.1:27017/npinternational`;
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.dgljxbc.mongodb.net/?retryWrites=true&w=majority`;
+const uri = `mongodb+srv://abirmahmud5665:KzQIHdW6yh6gMwel@cluster0.ghspuwt.mongodb.net/npinternational`;
+// const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.dgljxbc.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -28,13 +28,63 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+    client.connect();
     const database = client.db("npinternational");
     const productCollecction = database.collection("products");
     const categoryCollection = database.collection("category");
     const activityCollection = database.collection("activity");
+    const usersCollection = database.collection("users");
 
-    //get all propducts
+    //middleware
 
+    const verifyJwt = async (req, res, next) => {
+      const bearerToken = req.headers.authorization;
+      if (!bearerToken) {
+        return res.status(401).send({ message: "Unauthorized" });
+      }
+      const token = bearerToken.split(" ")[1];
+      jwt.verify(
+        token,
+        process.env.ACCESS_TOKEN_SECRET,
+        async (err, decoded) => {
+          if (err) {
+            return res
+              .status(403)
+              .send({ error: true, message: "Access denied" });
+          }
+          req.decoded = decoded;
+          const result = await usersCollection.findOne({
+            uid: decoded.uid,
+          });
+          if (result && result?.role === "admin") {
+            req.user = result;
+            next();
+          } else {
+            return res
+              .status(403)
+              .send({ error: true, message: "Access denied" });
+          }
+        }
+      );
+    };
+    const isAdmin = async (req, res, next) => {
+      const result = await usersCollection.findOne({ uid: req.decoded.uid });
+      if (result.role === "admin") {
+        next();
+      } else {
+        return res.status(403).send({ error: true, message: "Access denied" });
+      }
+    };
+    //jwt token
+    app.get("/jwt/:uid/:email", (req, res) => {
+      const { uid, email } = req.params;
+      const token = jwt.sign({ uid, email }, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "30d",
+      });
+      res.send({ token });
+    });
+
+    //get all products
     app.get("/products", async (req, res) => {
       const result = await productCollecction.find().toArray();
       res.send(result);
@@ -110,11 +160,9 @@ async function run() {
 
     app.put("/addCategory/:id", async (req, res) => {
       const categoryId = req.params.id;
-      const newCategory = req.body; // Assuming the request body contains a single category object
+      const newCategory = req.body;
 
       try {
-        // Assuming you have a MongoDB connection named "db"
-
         const result = await categoryCollection.updateOne(
           { _id: new ObjectId(categoryId) },
           { $push: { subCategories: newCategory } }
@@ -139,8 +187,7 @@ async function run() {
       "/deleteCategory/:categoryId/:subcategorySlug",
       async (req, res) => {
         const categoryId = req.params.categoryId;
-        const subcategorySlug = req.params.subcategorySlug; // The ID of the item you want to remove from the categories array
-
+        const subcategorySlug = req.params.subcategorySlug;
         try {
           const result = await categoryCollection.updateOne(
             { _id: new ObjectId(categoryId) },
@@ -156,14 +203,52 @@ async function run() {
     );
 
     //Add new activity
-    app.post("/add-activity", async (req, res) => {
+    app.post("/add-activity", verifyJwt, async (req, res) => {
       const { title, shortDescription, activityCover, post } = req.body;
-      const data = { title, shortDescription, activityCover, post };
+      const data = {
+        title,
+        shortDescription,
+        activityCover,
+        post,
+        addedOn: Date.now(),
+      };
       const result = await activityCollection.insertOne(data);
       res.send(result);
     });
 
-    // Connect the client to the server	(optional starting in v4.7)
+    //get all activity
+    app.get("/activities", async (req, res) => {
+      const result = await activityCollection
+        .find({}, { projection: { post: 0 } })
+        .toArray();
+      res.send(result);
+    });
+    //delete activity by id
+    app.delete("/activities/:id", verifyJwt, async (req, res) => {
+      const result = await activityCollection.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
+    });
+    // get activity data by id
+    app.get("/activity/:id", async (req, res) => {
+      const result = await activityCollection.findOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
+    });
+
+    app.post("/create-user", async (req, res) => {
+      const { uid, email } = req.body;
+      const user = {
+        uid,
+        email,
+        role: "admin",
+      };
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
+
     await client.connect();
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
