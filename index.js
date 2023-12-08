@@ -237,16 +237,16 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/create-user", async (req, res) => {
-      const { uid, email } = req.body;
-      const user = {
-        uid,
-        email,
-        role: "admin",
-      };
-      const result = await usersCollection.insertOne(user);
-      res.send(result);
-    });
+    // app.get("/create-user/:uid/:email", async (req, res) => {
+    //   const { uid, email } = req.params;
+    //   const user = {
+    //     uid,
+    //     email,
+    //     role: "admin",
+    //   };
+    //   const result = await usersCollection.insertOne(user);
+    //   res.send(result);
+    // });
 
     await client.connect();
     // Send a ping to confirm a successful connection
